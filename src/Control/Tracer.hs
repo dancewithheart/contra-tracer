@@ -70,6 +70,7 @@ module Control.Tracer
     , traceMaybe
     , traceMaybeM
     , squelchUnless
+    , squelchUnlessM
     -- * Re-export of Contravariant
     , Contravariant(..)
     , (>$<)
@@ -78,6 +79,7 @@ module Control.Tracer
 
 import           Control.Arrow ((|||), (&&&), arr, runKleisli)
 import           Control.Category ((>>>))
+import           Data.Bool (bool)
 import           Data.Functor.Contravariant (Contravariant (..), (>$<))
 import           Debug.Trace (traceM)
 
@@ -229,10 +231,13 @@ traceMaybeM k tr = Tracer $ classify >>> (Arrow.squelch ||| use tr)
   where
   classify = Arrow.effect (fmap (maybe (Left ()) Right) . k)
 
-
 -- | Uses 'traceMaybe' to give a tracer which emits only if a predicate is true.
 squelchUnless :: Monad m => (a -> Bool) -> Tracer m a -> Tracer m a
-squelchUnless p = traceMaybe (\a -> if p a then Just a else Nothing)
+squelchUnless p = traceMaybe (\a -> bool Nothing (Just a) (p a))
+
+-- | A monadic version of `squelchUnless`.
+squelchUnlessM :: Monad m => (a -> m Bool) -> Tracer m a -> Tracer m a
+squelchUnlessM p = traceMaybeM (\a -> bool Nothing (Just a) <$> p a)
 
 -- | Use a natural transformation to change the @m@ type. This is useful, for
 -- instance, to use concrete IO tracers in monad transformer stacks that have
