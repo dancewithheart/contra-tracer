@@ -72,6 +72,7 @@ module Control.Tracer
     -- * Re-export of Contravariant
     , Contravariant(..)
     , (>$<)
+    , contramapM
     ) where
 
 import           Control.Arrow ((|||), (&&&), arr, runKleisli)
@@ -239,3 +240,13 @@ stdoutTracer = emit putStrLn
 -- documentation in "Debug.Trace" for more details.
 debugTracer :: Applicative m => Tracer m String
 debugTracer = emit traceM
+
+-- | A contravariant transformation of a tracer using a Kleisli arrow.
+--
+contramapM
+  :: Monad m
+  => (a -> m b)
+  -- ^ Kleisli arrow which is evaluated only if a downstream tracer emits
+  -> Tracer m b
+  -> Tracer m a
+contramapM f tracer = arrow (Arrow.effect f >>> use tracer)
