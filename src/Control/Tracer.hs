@@ -54,6 +54,7 @@ specific tracer which takes domain-specific events is expected.
 
 module Control.Tracer
     ( Tracer (..)
+    , mkTracer
     , traceWith
     , arrow
     , use
@@ -68,16 +69,20 @@ module Control.Tracer
     , natTracer
     , Arrow.nat
     , traceMaybe
-    , traceTraversable
+    , traceMaybeM
     , traceAll
+    , traceTraversable
     , squelchUnless
+    , squelchUnlessM
     -- * Re-export of Contravariant
     , Contravariant(..)
     , (>$<)
+    , contramapM
     ) where
 
 import           Control.Arrow ((|||), (&&&), arr, runKleisli)
 import           Control.Category ((>>>))
+import           Data.Bool (bool)
 import           Data.Foldable (traverse_)
 import           Data.Functor.Contravariant (Contravariant (..), (>$<))
 import           Debug.Trace (traceM)
@@ -178,6 +183,11 @@ instance Monad m => Monoid (Tracer m s) where
     mappend = (<>)
     mempty  = nullTracer
 
+-- | Make an emitting tracer from a callback.
+--
+mkTracer :: Applicative m => (a -> m ()) -> Tracer m a
+mkTracer = Tracer . Arrow.emit
+
 {-# INLINE traceWith #-}
 -- | Run a tracer with a given input.
 traceWith :: Monad m => Tracer m a -> a -> m ()
@@ -223,9 +233,20 @@ traceMaybe k tr = Tracer $ classify >>> (Arrow.squelch ||| use tr)
   where
   classify = arr (maybe (Left ()) Right . k)
 
+-- | A monadic version of `traceMaybe`.
+--
+traceMaybeM :: Monad m => (a -> m (Maybe b)) -> Tracer m b -> Tracer m a
+traceMaybeM k tr = Tracer $ classify >>> (Arrow.squelch ||| use tr)
+  where
+  classify = Arrow.effect (fmap (maybe (Left ()) Right) . k)
+
 -- | Uses 'traceMaybe' to give a tracer which emits only if a predicate is true.
 squelchUnless :: Monad m => (a -> Bool) -> Tracer m a -> Tracer m a
-squelchUnless p = traceMaybe (\a -> if p a then Just a else Nothing)
+squelchUnless p = traceMaybe (\a -> bool Nothing (Just a) (p a))
+
+-- | A monadic version of `squelchUnless`.
+squelchUnlessM :: Monad m => (a -> m Bool) -> Tracer m a -> Tracer m a
+squelchUnlessM p = traceMaybeM (\a -> bool Nothing (Just a) <$> p a)
 
 traceTraversable :: (Monad m, Foldable t) => Tracer m a -> Tracer m (t a)
 traceTraversable tracer@(Tracer tr) =
@@ -251,3 +272,13 @@ stdoutTracer = emit putStrLn
 -- documentation in "Debug.Trace" for more details.
 debugTracer :: Applicative m => Tracer m String
 debugTracer = emit traceM
+
+-- | A contravariant transformation of a tracer using a Kleisli arrow.
+--
+contramapM
+  :: Monad m
+  => (a -> m b)
+  -- ^ Kleisli arrow which is evaluated only if a downstream tracer emits
+  -> Tracer m b
+  -> Tracer m a
+contramapM f tracer = arrow (Arrow.effect f >>> use tracer)

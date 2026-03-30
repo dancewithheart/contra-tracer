@@ -25,6 +25,11 @@ library
   build-depends:       base < 5
   if impl(ghc < 8.5)
     build-depends:     contravariant
+  ghc-options:        -Wall
+                      -Wincomplete-uni-patterns
+                      -Wincomplete-record-updates
+                      -Wpartial-fields
+                      -Wredundant-constraints
 
 test-suite contra-tracer-tests
   type:                exitcode-stdio-1.0
